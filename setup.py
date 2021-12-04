@@ -55,10 +55,10 @@ if platform.system() == 'Darwin':
     extra_compile_args += ['-std=c++11', '-mmacosx-version-min=10.9']
     extra_link_args += ['-stdlib=libc++', '-mmacosx-version-min=10.9']
 
-setup(name='annoy',
+setup(name='fastannoy',
       version='1.16.1',
       description='Approximate Nearest Neighbors in C++/Python optimized for memory usage and loading/saving to disk.',
-      packages=['annoy'],
+      packages=['fastannoy'],
       ext_modules=[
         Extension(
             'annoy.annoylib', ['src/annoymodule.cc'],
@@ -68,9 +68,9 @@ setup(name='annoy',
         )
       ],
       long_description=long_description,
-      author='Erik Bernhardsson',
-      author_email='mail@erikbern.com',
-      url='https://github.com/spotify/annoy',
+      author='Young Hun Oh',
+      author_email='younghuo@andrew.cmu.edu',
+      url='https://github.com/hoony-oyh/annoy',
       license='Apache License 2.0',
       classifiers=[
           'Development Status :: 5 - Production/Stable',
