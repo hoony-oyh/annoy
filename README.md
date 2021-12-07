@@ -1,5 +1,6 @@
 #FastAnnoy
-Term project for 2021 Fall "How to Write Fast Code"
+Term project for 2021 Fall "How to Write Fast Code"  
+Baseline: Annoy (https://github.com/spotify/annoy)
 
 ## How to run
 ### Kernel Test
@@ -8,16 +9,23 @@ cd kernel_test
 make all
 ```
 
+### Installing baseline
+```asm
+pip3 install --user annoy==1.16
+```
+
 ### Installing our version of implementation
 ```asm
 python3 our_setup.py install --user
 ```
 Then it will install the python library for our implementation
 
-### Installing baseline
+### Installing our version of implementation with openMP (not validated)
 ```asm
-python3 setup.py install --user
+// first replace the content of annoylib.h with annoylib_omp.h
+python3 omp_setup.py install --user
 ```
+Then it will install the python library for our implementation
 
 ### Performance Measurement Codes
 Indexing (Baseline v.s. Ours)
