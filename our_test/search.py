@@ -5,7 +5,7 @@ import random
 
 run_iter = 50
 num_element = 300
-k = 50
+k = 20
 random_list = [random.randint(0, 300000) for _ in range(num_element)]
 metric = "dot"
 
