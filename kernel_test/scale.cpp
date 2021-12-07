@@ -40,14 +40,23 @@ inline void long_simd_scale(const float* x, float* z, float scale, int f) {
     __m256 s = _mm256_set1_ps(scale);
     if (f > batch_size) {
         for (; f > batch_size-1; f-=batch_size) {
-            __m256 t1 = _mm256_mul_ps(_mm256_loadu_ps(x), s);
-            __m256 t2 = _mm256_mul_ps(_mm256_loadu_ps(x+8), s);
-            __m256 t3 = _mm256_mul_ps(_mm256_loadu_ps(x+16), s);
-            __m256 t4 = _mm256_mul_ps(_mm256_loadu_ps(x+24), s);
-            __m256 t5 = _mm256_mul_ps(_mm256_loadu_ps(x+32), s);
-            __m256 t6 = _mm256_mul_ps(_mm256_loadu_ps(x+40), s);
-            __m256 t7 = _mm256_mul_ps(_mm256_loadu_ps(x+48), s);
-            __m256 t8 = _mm256_mul_ps(_mm256_loadu_ps(x+56), s);
+            __m256 t1 = _mm256_loadu_ps(x);
+            __m256 t2 = _mm256_loadu_ps(x+8);
+            __m256 t3 = _mm256_loadu_ps(x+16);
+            __m256 t4 = _mm256_loadu_ps(x+24);
+            __m256 t5 = _mm256_loadu_ps(x+32);
+            __m256 t6 = _mm256_loadu_ps(x+40);
+            __m256 t7 = _mm256_loadu_ps(x+48);
+            __m256 t8 = _mm256_loadu_ps(x+56);
+
+            t1 = _mm256_mul_ps(t1, s);
+            t2 = _mm256_mul_ps(t2, s);
+            t3 = _mm256_mul_ps(t3, s);
+            t4 = _mm256_mul_ps(t4, s);
+            t5 = _mm256_mul_ps(t5, s);
+            t6 = _mm256_mul_ps(t6, s);
+            t7 = _mm256_mul_ps(t7, s);
+            t8 = _mm256_mul_ps(t8, s);
 
             _mm256_store_ps(z, t1);
             _mm256_store_ps(z+8, t2);

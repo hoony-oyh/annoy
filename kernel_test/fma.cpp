@@ -133,11 +133,11 @@ int main(int argc, char **argv) {
     float s = ((float) rand())/ ((float) RAND_MAX);
 
     printf("======================================================\n");
-    printf("Vector Scaling Kernel Profiling\n");
+    printf("Vector FMA Kernel Profiling\n");
     printf("======================================================\n");
     printf("Testing vector scaling with feature dimension %d\n\n", f);
 
-    printf("Vanilla vector scaling =========================\n");
+    printf("Vanilla vector FMA =========================\n");
     cycle_sum = 0;
     for(unsigned int i = 0; i != runs; ++i) {
         RDTSC(t0);
@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
     printf("Average Scaling time: %lf cycles\n", ((double) (cycle_sum / ((double) runs))));
     printf("Op/Cycle = %f\n", ((double) (2*f * runs / (double) cycle_sum)));
 
-    printf("\nSIMD vector scaling ============================\n");
+    printf("\nSIMD vector FMA ============================\n");
     cycle_sum = 0;
     for(unsigned int i = 0; i != runs; ++i) {
         RDTSC(t0);
@@ -160,7 +160,7 @@ int main(int argc, char **argv) {
     printf("Op/Cycle = %f\n", ((double) (2*f * runs / (double) cycle_sum)));
     correction_check(c_ref, c, f);
 
-    printf("\nSIMD vector scaling (long)======================\n");
+    printf("\nSIMD vector FMA (long)======================\n");
     cycle_sum = 0;
     for(unsigned int i = 0; i != runs; ++i) {
         for (int j = 0; j != f; ++j){

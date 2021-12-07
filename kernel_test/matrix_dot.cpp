@@ -239,7 +239,7 @@ int main(int argc, char **argv) {
     printf("Testing dot product with feature dimension %d\n", f);
     printf("Measuring the dot product between %d vectors and one vector\n\n", n_items);
 
-    printf("Vanilla matrix-vector dot product =====================================================================\n");
+    printf("Vanilla matrix-vector dot product =====================\n");
     cycle_sum = 0;
     for(unsigned int i = 0; i != runs; ++i) {
         for (int j = 0; j != indices.size(); ++j){
@@ -254,7 +254,7 @@ int main(int argc, char **argv) {
     printf("Op/Cycle = %f\n", ((double) (2 * f * n_items * runs / (double) cycle_sum)));
     printf("\n");
 
-    printf("SIMD sequential dot product ===========================================================================\n");
+    printf("SIMD sequential dot product ============================\n");
     cycle_sum = 0;
     for(unsigned int i = 0; i != runs; ++i) {
         for (int j = 0; j != indices.size(); ++j){
@@ -270,7 +270,7 @@ int main(int argc, char **argv) {
     correction_check(o_ref, o, n_items);
     printf("\n");
 
-    printf("SIMD matrix-vector dot product ========================================================================\n");
+    printf("SIMD matrix-vector dot product ==========================\n");
     cycle_sum = 0;
     for(unsigned int i = 0; i != runs; ++i) {
         for (int j = 0; j != indices.size(); ++j){
