@@ -78,7 +78,7 @@ typedef unsigned __int64  uint64_t;
 #pragma message "Using 512-bit AVX instructions"
 #define USE_AVX512
 #elif !defined(NO_MANUAL_VECTORIZATION) && defined(__AVX__) && defined (__SSE__) && defined(__SSE2__) && defined(__SSE3__)
-#pragma message "Using 128-bit AVX instructions"
+#pragma message "Using 256-bit AVX instructions"
 #define USE_AVX
 #else
 #pragma message "Using no AVX instructions"
@@ -140,11 +140,32 @@ inline T dot(const T* x, const T* y, int f) {
 }
 
 template<typename T>
-inline T manhattan_distance(const T* x, const T* y, int f) {
-  T d = 0.0;
-  for (int i = 0; i < f; i++)
-    d += fabs(x[i] - y[i]);
-  return d;
+inline void substract(const T* x, const T* y, T* z, int f) {
+    for (int i = 0; i < f; i++) {
+        *z = (*x) - (*y);
+        x++;
+        y++;
+        z++;
+    }
+}
+
+template<typename T>
+inline void scale(const T* x, T* z, T scale, int f) {
+    for (int i = 0; i < f; i++) {
+        *z = (*x) * scale;
+        x++;
+        z++;
+    }
+}
+
+template<typename T>
+inline void aXplusbY(const T* x, const T* y, T* z, T a, T b, int f) {
+    for (int i = 0; i < f; i++) {
+        *z = a * (*x) + b * (*y);
+        x++;
+        y++;
+        z++;
+    }
 }
 
 template<typename T>
@@ -161,62 +182,9 @@ inline T euclidean_distance(const T* x, const T* y, int f) {
 }
 
 #ifdef USE_AVX
-// Horizontal single sum of 256bit vector.
-inline float hsum256_ps_avx(__m256 v) {
-  const __m128 x128 = _mm_add_ps(_mm256_extractf128_ps(v, 1), _mm256_castps256_ps128(v));
-  const __m128 x64 = _mm_add_ps(x128, _mm_movehl_ps(x128, x128));
-  const __m128 x32 = _mm_add_ss(x64, _mm_shuffle_ps(x64, x64, 0x55));
-  return _mm_cvtss_f32(x32);
-}
+#include "kernel.h"
 
-template<>
-inline float dot<float>(const float* x, const float *y, int f) {
-  float result = 0;
-  if (f > 7) {
-    __m256 d = _mm256_setzero_ps();
-    for (; f > 7; f -= 8) {
-      d = _mm256_add_ps(d, _mm256_mul_ps(_mm256_loadu_ps(x), _mm256_loadu_ps(y)));
-      x += 8;
-      y += 8;
-    }
-    // Sum all floats in dot register.
-    result += hsum256_ps_avx(d);
-  }
-  // Don't forget the remaining values.
-  for (; f > 0; f--) {
-    result += *x * *y;
-    x++;
-    y++;
-  }
-  return result;
-}
-
-template<>
-inline float manhattan_distance<float>(const float* x, const float* y, int f) {
-  float result = 0;
-  int i = f;
-  if (f > 7) {
-    __m256 manhattan = _mm256_setzero_ps();
-    __m256 minus_zero = _mm256_set1_ps(-0.0f);
-    for (; i > 7; i -= 8) {
-      const __m256 x_minus_y = _mm256_sub_ps(_mm256_loadu_ps(x), _mm256_loadu_ps(y));
-      const __m256 distance = _mm256_andnot_ps(minus_zero, x_minus_y); // Absolute value of x_minus_y (forces sign bit to zero)
-      manhattan = _mm256_add_ps(manhattan, distance);
-      x += 8;
-      y += 8;
-    }
-    // Sum all floats in manhattan register.
-    result = hsum256_ps_avx(manhattan);
-  }
-  // Don't forget the remaining values.
-  for (; i > 0; i--) {
-    result += fabsf(*x - *y);
-    x++;
-    y++;
-  }
-  return result;
-}
-
+// TODO. implement better euclidean_distances
 template<>
 inline float euclidean_distance<float>(const float* x, const float* y, int f) {
   float result=0;
@@ -355,13 +323,11 @@ inline void two_means(const vector<Node*>& nodes, int f, Random& random, bool co
       continue;
     }
     if (di < dj) {
-      for (int z = 0; z < f; z++)
-        p->v[z] = (p->v[z] * ic + nodes[k]->v[z] / norm) / (ic + 1);
+      aXplusbY(p->v, nodes[k]->v, p->v, (float)ic/(ic+1), (float)1/norm/(ic+1), f);
       Distance::init_node(p, f);
       ic++;
     } else if (dj < di) {
-      for (int z = 0; z < f; z++)
-        q->v[z] = (q->v[z] * jc + nodes[k]->v[z] / norm) / (jc + 1);
+      aXplusbY(q->v, nodes[k]->v, q->v, (float)jc/(jc+1), (float)1/norm/(jc+1), f);
       Distance::init_node(q, f);
       jc++;
     }
@@ -449,8 +415,7 @@ struct Angular : Base {
     Node<S, T>* p = (Node<S, T>*)malloc(s); // TODO: avoid
     Node<S, T>* q = (Node<S, T>*)malloc(s); // TODO: avoid
     two_means<T, Random, Angular, Node<S, T> >(nodes, f, random, true, p, q);
-    for (int z = 0; z < f; z++)
-      n->v[z] = p->v[z] - q->v[z];
+    substract(p->v, q->v, n->v, f);
     Base::normalize<T, Node<S, T> >(n, f);
     free(p);
     free(q);
@@ -524,9 +489,10 @@ struct DotProduct : Angular {
     DotProduct::zero_value(p); 
     DotProduct::zero_value(q);
     two_means<T, Random, DotProduct, Node<S, T> >(nodes, f, random, true, p, q);
-    for (int z = 0; z < f; z++)
-      n->v[z] = p->v[z] - q->v[z];
+
+    substract(p->v, q->v, n->v, f);
     n->dot_factor = p->dot_factor - q->dot_factor;
+
     DotProduct::normalize<T, Node<S, T> >(n, f);
     free(p);
     free(q);
@@ -536,8 +502,7 @@ struct DotProduct : Angular {
   static inline void normalize(Node* node, int f) {
     T norm = sqrt(dot(node->v, node->v, f) + pow(node->dot_factor, 2));
     if (norm > 0) {
-      for (int z = 0; z < f; z++)
-        node->v[z] /= norm;
+      scale(node->v, node->v, 1/norm, f);
       node->dot_factor /= norm;
     }
   }
@@ -1037,6 +1002,105 @@ protected:
     return get_node_ptr<S, Node>(_nodes, _s, i);
   }
 
+  /* ===============================================================================================================
+   * Indexing related functions
+   * ===============================================================================================================*/
+  inline void _simd_matrix_dot_kernel2(Node* v_node, vector<S> indices, vector<S>* children_indices, int f, int start_idx) const {
+      float *x1 = _get(indices[start_idx])->v;
+      float *x2 = _get(indices[start_idx+1])->v;
+      float *x3 = _get(indices[start_idx+2])->v;
+      float *x4 = _get(indices[start_idx+3])->v;
+      float *x5 = _get(indices[start_idx+4])->v;
+
+      float *n = v_node->v;
+
+      __m256 t1 = _mm256_setzero_ps();
+      __m256 t2 = _mm256_setzero_ps();
+      __m256 t3 = _mm256_setzero_ps();
+      __m256 t4 = _mm256_setzero_ps();
+      __m256 t5 = _mm256_setzero_ps();
+
+      float o1=0, o2=0, o3=0, o4=0, o5=0;
+
+      if (f>7) {
+          for (; f > 7; f -= 8) {
+              __m256 n_chunk = _mm256_loadu_ps(n);
+              __m256 v1 = _mm256_loadu_ps(x1);
+              __m256 v2 = _mm256_loadu_ps(x2);
+              __m256 v3 = _mm256_loadu_ps(x3);
+              __m256 v4 = _mm256_loadu_ps(x4);
+              __m256 v5 = _mm256_loadu_ps(x5);
+
+              t1 = _mm256_fmadd_ps(v1, n_chunk, t1);
+              t2 = _mm256_fmadd_ps(v2, n_chunk, t2);
+              t3 = _mm256_fmadd_ps(v3, n_chunk, t3);
+              t4 = _mm256_fmadd_ps(v4, n_chunk, t4);
+              t5 = _mm256_fmadd_ps(v5, n_chunk, t5);
+
+              x1 += 8;
+              x2 += 8;
+              x3 += 8;
+              x4 += 8;
+              x5 += 8;
+              n += 8;
+          }
+
+          o1 = hsum256_ps_avx(t1);
+          o2 = hsum256_ps_avx(t2);
+          o3 = hsum256_ps_avx(t3);
+          o4 = hsum256_ps_avx(t4);
+          o5 = hsum256_ps_avx(t5);
+      }
+      for (; f > 0; f--) {
+          o1 += *x1 * *n;
+          o2 += *x2 * *n;
+          o3 += *x3 * *n;
+          o4 += *x4 * *n;
+          o5 += *x5 * *n;
+
+          x1 ++;
+          x2 ++;
+          x3 ++;
+          x4 ++;
+          x5 ++;
+          n++;
+      }
+
+      float n_term = v_node->dot_factor * v_node->dot_factor;
+      o1 += n_term;
+      o2 += n_term;
+      o3 += n_term;
+      o4 += n_term;
+      o5 += n_term;
+
+      children_indices[o1>0].push_back(indices[start_idx]);
+      children_indices[o2>0].push_back(indices[start_idx+1]);
+      children_indices[o3>0].push_back(indices[start_idx+2]);
+      children_indices[o4>0].push_back(indices[start_idx+3]);
+      children_indices[o5>0].push_back(indices[start_idx+4]);
+  }
+
+  inline void _partition_points(Node* v_node, vector<S> indices, vector<S>* children_indices) {
+      int nv = indices.size();
+      int i = 0;
+
+//      if (nv <= 200){
+//          for (; nv > 4; nv -= 5) {
+//              _simd_matrix_dot_kernel2(v_node, indices, children_indices, _f, i);
+//              i += 5;
+//          }
+//      }
+
+      float n_term = v_node->dot_factor * v_node->dot_factor;
+      for (; nv > 0; nv--) {
+          S j = indices[i];
+          bool side = (dot(v_node->v, _get(j)->v, _f) + n_term) > 0;
+          children_indices[side].push_back(j);
+          i++;
+      }
+  }
+
+
   S _make_tree(const vector<S >& indices, bool is_root) {
     // The basic rule is that if we have <= _K items, then it's a leaf node, otherwise it's a split node.
     // There's some regrettable complications caused by the problem that root nodes have to be "special":
@@ -1071,18 +1135,11 @@ protected:
 
     vector<S> children_indices[2];
     Node* m = (Node*)malloc(_s); // TODO: avoid
+
     D::create_split(children, _f, _s, _random, m);
 
-    for (size_t i = 0; i < indices.size(); i++) {
-      S j = indices[i];
-      Node* n = _get(j);
-      if (n) {
-        bool side = D::side(m, n->v, _f, _random);
-        children_indices[side].push_back(j);
-      } else {
-        showUpdate("No node for index %d?\n", j);
-      }
-    }
+    // TODO. change this part.
+    _partition_points(m, indices, children_indices);
 
     // If we didn't find a hyperplane, just randomize sides as a last option
     while (children_indices[0].size() == 0 || children_indices[1].size() == 0) {
@@ -1122,6 +1179,138 @@ protected:
     return item;
   }
 
+  /* ===============================================================================================================
+   * Search related functions
+   * ===============================================================================================================*/
+
+//  inline void _get_distances(Node* v_node, vector<S> nns, vector<pair<T, S> >* nns_dist) const {
+//      for (size_t i = 0; i < nns.size(); i++) {
+//          S j = nns[i];
+//          nns_dist->push_back(make_pair(D::distance(v_node, _get(j), _f), j));
+//      }
+//  }
+
+  inline void _simd_matrix_dot_kernel(Node* v_node, vector<S> indices,  vector<pair<T, S> >* nns_dist, int f, int start_idx) const {
+      float *x1 = _get(indices[start_idx])->v;
+      float *x2 = _get(indices[start_idx+1])->v;
+      float *x3 = _get(indices[start_idx+2])->v;
+      float *x4 = _get(indices[start_idx+3])->v;
+      float *x5 = _get(indices[start_idx+4])->v;
+      float *x6 = _get(indices[start_idx+5])->v;
+      float *x7 = _get(indices[start_idx+6])->v;
+      float *x8 = _get(indices[start_idx+7])->v;
+      float *x9 = _get(indices[start_idx+8])->v;
+      float *x10 = _get(indices[start_idx+9])->v;
+
+      float *n = v_node->v;
+
+      __m256 t1 = _mm256_setzero_ps();
+      __m256 t2 = _mm256_setzero_ps();
+      __m256 t3 = _mm256_setzero_ps();
+      __m256 t4 = _mm256_setzero_ps();
+      __m256 t5 = _mm256_setzero_ps();
+      __m256 t6 = _mm256_setzero_ps();
+      __m256 t7 = _mm256_setzero_ps();
+      __m256 t8 = _mm256_setzero_ps();
+      __m256 t9 = _mm256_setzero_ps();
+      __m256 t10 = _mm256_setzero_ps();
+
+      float o1=0, o2=0, o3=0, o4=0, o5=0, o6=0, o7=0, o8=0, o9=0, o10=0;
+
+      if (f>7) {
+          for (; f > 7; f -= 8) {
+              __m256 n_chunk = _mm256_loadu_ps(n);
+              __m256 v1 = _mm256_loadu_ps(x1);
+              __m256 v2 = _mm256_loadu_ps(x2);
+              __m256 v3 = _mm256_loadu_ps(x3);
+              __m256 v4 = _mm256_loadu_ps(x4);
+              __m256 v5 = _mm256_loadu_ps(x5);
+
+              t1 = _mm256_fmadd_ps(v1, n_chunk, t1);
+              t2 = _mm256_fmadd_ps(v2, n_chunk, t2);
+              t3 = _mm256_fmadd_ps(v3, n_chunk, t3);
+              t4 = _mm256_fmadd_ps(v4, n_chunk, t4);
+              t5 = _mm256_fmadd_ps(v5, n_chunk, t5);
+              t6 = _mm256_fmadd_ps(_mm256_loadu_ps(x6), n_chunk, t6);
+              t7 = _mm256_fmadd_ps(_mm256_loadu_ps(x7), n_chunk, t7);
+              t8 = _mm256_fmadd_ps(_mm256_loadu_ps(x8), n_chunk, t8);
+              t9 = _mm256_fmadd_ps(_mm256_loadu_ps(x9), n_chunk, t9);
+              t10 = _mm256_fmadd_ps(_mm256_loadu_ps(x10), n_chunk, t10);
+
+              x1 += 8;
+              x2 += 8;
+              x3 += 8;
+              x4 += 8;
+              x5 += 8;
+              x6 += 8;
+              x7 += 8;
+              x8 += 8;
+              x9 += 8;
+              x10 += 8;
+              n += 8;
+          }
+
+          o1 = hsum256_ps_avx(t1);
+          o2 = hsum256_ps_avx(t2);
+          o3 = hsum256_ps_avx(t3);
+          o4 = hsum256_ps_avx(t4);
+          o5 = hsum256_ps_avx(t5);
+          o6 = hsum256_ps_avx(t6);
+          o7 = hsum256_ps_avx(t7);
+          o8 = hsum256_ps_avx(t8);
+          o9 = hsum256_ps_avx(t9);
+          o10 = hsum256_ps_avx(t10);
+      }
+      for (; f > 0; f--) {
+          o1 += *x1 * *n;
+          o2 += *x2 * *n;
+          o3 += *x3 * *n;
+          o4 += *x4 * *n;
+          o5 += *x5 * *n;
+          o6 += *x6 * *n;
+          o7 += *x7 * *n;
+          o8 += *x8 * *n;
+          o9 += *x9 * *n;
+          o10 += *x10 * *n;
+
+          x1 ++;
+          x2 ++;
+          x3 ++;
+          x4 ++;
+          x5 ++;
+          x6 ++;
+          x7 ++;
+          x8 ++;
+          x9 ++;
+          x10 ++;
+          n++;
+      }
+      nns_dist->push_back(make_pair(-o1, indices[start_idx]));
+      nns_dist->push_back(make_pair(-o2, indices[start_idx+1]));
+      nns_dist->push_back(make_pair(-o3, indices[start_idx+2]));
+      nns_dist->push_back(make_pair(-o4, indices[start_idx+3]));
+      nns_dist->push_back(make_pair(-o5, indices[start_idx+4]));
+      nns_dist->push_back(make_pair(-o6, indices[start_idx+5]));
+      nns_dist->push_back(make_pair(-o7, indices[start_idx+6]));
+      nns_dist->push_back(make_pair(-o8, indices[start_idx+7]));
+      nns_dist->push_back(make_pair(-o9, indices[start_idx+8]));
+      nns_dist->push_back(make_pair(-o10, indices[start_idx+9]));
+  }
+
+  inline void _get_distances(Node* v_node, vector<S> nns, vector<pair<T, S> >* nns_dist) const {
+      int nv = nns.size();
+      int i = 0;
+      for (; nv > 9; nv -= 10) {
+          _simd_matrix_dot_kernel(v_node, nns, nns_dist, _f, i);
+          i += 10;
+      }
+      for (; nv > 0; nv--) {
+          S j = nns[i];
+          nns_dist->push_back(make_pair(-dot(v_node->v, _get(j)->v, _f), j));
+          i++;
+      }
+  }
+
   void _get_all_nns(const T* v, size_t n, size_t search_k, vector<S>* result, vector<T>* distances) const {
     Node* v_node = (Node *)malloc(_s); // TODO: avoid
     D::template zero_value<Node>(v_node);
@@ -1159,17 +1348,12 @@ protected:
 
     // Get distances for all items
     // To avoid calculating distance multiple times for any items, sort by id
+    // TODO. make this part better
     std::sort(nns.begin(), nns.end());
+    nns.erase( unique( nns.begin(), nns.end() ), nns.end() );
+
     vector<pair<T, S> > nns_dist;
-    S last = -1;
-    for (size_t i = 0; i < nns.size(); i++) {
-      S j = nns[i];
-      if (j == last)
-        continue;
-      last = j;
-      if (_get(j)->n_descendants == 1)  // This is only to guard a really obscure case, #284
-        nns_dist.push_back(make_pair(D::distance(v_node, _get(j), _f), j));
-    }
+    _get_distances(v_node, nns, &nns_dist);
 
     size_t m = nns_dist.size();
     size_t p = n < m ? n : m; // Return this many items
