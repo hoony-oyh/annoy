@@ -14,6 +14,10 @@ python3 our_setup.py install --user
 ```
 Then it will install the python library for our implementation
 
+### Installing baseline
+```asm
+python3 setup.py install --user
+```
 
 ### Performance Measurement Codes
 Indexing (Baseline v.s. Ours)
@@ -25,3 +29,7 @@ Search (Baseline v.s. Ours)
 ```asm
 python3 search.py
 ```
+
+## Contact
+- Henry Oh (younghuo@andrew.cmu.edu)
+- Fu Chi Ao (fuchia@andrew.cmu.edu)
